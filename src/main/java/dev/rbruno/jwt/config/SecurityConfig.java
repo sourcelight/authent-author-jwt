@@ -49,15 +49,17 @@ public class SecurityConfig {
 
 	@Bean
 	public InMemoryUserDetailsManager users() {
-		return new InMemoryUserDetailsManager(User.withUsername("rbruno").password("{noop}password").authorities("read").build());
+		return new InMemoryUserDetailsManager(User.withUsername("rbruno").password("{noop}password").authorities("read","write").build());
 	}
-
+	@Order(Ordered.HIGHEST_PRECEDENCE+1)
 	@Bean
 	public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-		return http
-				.csrf(AbstractHttpConfigurer::disable)
+		return http.
+				securityMatcher(new AntPathRequestMatcher("/**"))
+
 				.authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+				.csrf(AbstractHttpConfigurer::disable)
 				.oauth2ResourceServer(OAuth2ResourceServerConfigurer::jwt)
 				.exceptionHandling(
 						(ex) -> ex.authenticationEntryPoint(new BearerTokenAuthenticationEntryPoint())
@@ -68,7 +70,27 @@ public class SecurityConfig {
 	/*
 	 * This will allow the /token endpoint to use basic auth and everything else uses the SFC above
 	 */
+
 	@Order(Ordered.HIGHEST_PRECEDENCE)
+	@Bean
+	SecurityFilterChain tokenSecurityFilterChain(HttpSecurity http) throws Exception {
+		return http.securityMatcher(new AntPathRequestMatcher("/token"))
+				.authorizeHttpRequests((auth) -> auth
+						.requestMatchers(new AntPathRequestMatcher("/token")).authenticated()
+				)
+				//.authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
+				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+				.csrf(AbstractHttpConfigurer::disable)
+				.exceptionHandling(ex -> {
+					ex.authenticationEntryPoint(new BearerTokenAuthenticationEntryPoint());
+					ex.accessDeniedHandler(new BearerTokenAccessDeniedHandler());
+				})
+				.httpBasic(withDefaults())
+				.build();
+	}
+
+
+	/*@Order(Ordered.HIGHEST_PRECEDENCE)
 	@Bean
 	SecurityFilterChain tokenSecurityFilterChain(HttpSecurity http) throws Exception {
 		return http
@@ -82,7 +104,7 @@ public class SecurityConfig {
 				})
 				.httpBasic(withDefaults())
 				.build();
-	}
+	}*/
 
 	@Bean
 	JwtDecoder jwtDecoder() {
@@ -95,6 +117,9 @@ public class SecurityConfig {
 		JWKSource<SecurityContext> jwks = new ImmutableJWKSet<>(new JWKSet(jwk));
 		return new NimbusJwtEncoder(jwks);
 	}
+
+
+
 
 	@Bean
 	CorsConfigurationSource corsConfigurationSource() {
